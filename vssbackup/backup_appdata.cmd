@@ -1,4 +1,15 @@
 @echo off
+rem
+rem Backup script for %APPDATA% in Windows 7
+rem
+rem Copyright (c)2010 by Gwyn Connor (gwyn.connor at googlemail.com)
+rem License: GNU Lesser General Public License
+rem          (http://www.gnu.org/copyleft/lesser.txt)
+rem
+rem This script creates a backup of your own user's %APPDATA% folder
+rem (C:\Users\USERNAME\AppData\Roaming) to the target folder D:\Backup\AppData.
+rem It needs to run as Administrator in order to create snapshots.
+rem
 rem Dependencies:
 rem   vshadow.exe   (from Microsoft 7 SDK: Bin\x64\vsstools\vshadow.exe)
 rem   dosdev.exe    (http://sourceforge.net/projects/vscsc/files/utilities/dosdev.zip/download)
