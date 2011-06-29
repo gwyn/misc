@@ -1,0 +1,10 @@
+2011-06-29  Gwyn Connor <gwyn.connor@googlemail.com>
+
+        * scp_r2r.py: setting default path2 as HOME (~) if none given
+        * scp_r2r.py: added scp -C switch for compression
+        * scp_r2r.py: fixed bug when a host didn't have an identity file entry
+        * ChangeLog: added this file to keep track of changes
+
+2011-04-18  Gwyn Connor <gwyn.connor@googlemail.com>
+
+        * scp_r2r.py: initial release
