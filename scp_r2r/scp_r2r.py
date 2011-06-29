@@ -2,7 +2,7 @@
 #
 # Secure copy between two remote hosts
 #
-# Copyright (c)2010 by Gwyn Connor (gwyn.connor at googlemail.com)
+# Copyright (c)2010-2011 by Gwyn Connor (gwyn.connor at googlemail.com)
 # License: GNU Lesser General Public License
 #          (http://www.gnu.org/copyleft/lesser.txt)
 #
@@ -50,7 +50,7 @@ SSH_AGENT_PATH = '/usr/bin/ssh-agent'
 SSH_ADD_PATH = '/usr/bin/ssh-add'
 SSH_CONFIG_FILE = os.path.expanduser('~/.ssh/config')
 
-__version__ = '0.1.0418' # x.y.MMDD
+__version__ = '0.11.0629' # x.y.MMDD
 
 class ScpError(Exception):
     def __init__(self, value):
@@ -183,7 +183,7 @@ def scp(agent, host1, host2, options):
         connect_host = host2
         remote_host = host1
         source = '%s:%s' % (host1['config']['hostname'], host1['path'])
-        target = host2['path']
+        target = host2['path'] if host2['path'] else '~'
     command = [SSH_PATH,
         '-A',
         '-t']
@@ -199,6 +199,8 @@ def scp(agent, host1, host2, options):
         command.extend(['-l', str(options.limit)])
     if options.recursive:
         command.append('-r')
+    if options.compression:
+        command.append('-C')
     command.extend(['-o%s=%s' % (option, value)
                        for option, value in remote_host['config'].items()
                        if option not in ['identityfile', 'hostname']])
@@ -256,9 +258,11 @@ def main_transfer(host1, host2, options):
 
         agent = ssh_agent_start()
         try:
-            identity_files = [
-                host1['config']['identityfile'],
-                host2['config']['identityfile']]
+            identity_files = []
+            if host1['config'].has_key('identityfile'):
+                identity_files.append(host1['config']['identityfile'])
+            if host2['config'].has_key('identityfile'):
+                identity_files.append(host2['config']['identityfile'])
             ssh_agent_load_keys(agent, identity_files)
             scp(agent, host1, host2, options)
         finally:
@@ -282,6 +286,8 @@ def main():
         help='limits the used bandwidth, specified in kbit/s')
     parser.add_option('-r', action='store_true', dest='recursive',
         help='recursively copy entire directories')
+    parser.add_option('-C', action='store_false', dest='compression',
+        help='enable compression')
     (options, args) = parser.parse_args()
     if len(args) != 2:
         parser.error('please specify exactly two hosts')
