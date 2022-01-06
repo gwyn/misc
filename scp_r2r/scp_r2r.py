@@ -2,7 +2,7 @@
 #
 # Secure copy between two remote hosts
 #
-# Copyright (c)2010-2011 by Gwyn Connor (gwyn.connor at googlemail.com)
+# Copyright (c)2010-2022 by Gwyn Connor (gwyn.connor at googlemail.com)
 # License: GNU Lesser General Public License
 #          (http://www.gnu.org/copyleft/lesser.txt)
 #
@@ -28,6 +28,12 @@
 #       Port 2222
 #       IdentityFile /path/to/id_rsa
 #
+# Notes for Microsoft Windows and PAGEANT users:
+#   Install ssh-pageant
+#     https://github.com/cuviper/ssh-pageant
+#   Set global script variable SSH_AGENT_PATH to ssh-pageant path, e.g.:
+#     SSH_AGENT_PATH = '/cygdrive/c/bin/ssh-pageant'
+#
 # References:
 #   [1] A hack to copy files between two remote hosts using Python,
 #         by Eliot, 2010-02-08
@@ -46,11 +52,12 @@ import fnmatch
 import optparse
 
 SSH_PATH = '/usr/bin/ssh'
-SSH_AGENT_PATH = '/usr/bin/ssh-agent'
+#SSH_AGENT_PATH = '/usr/bin/ssh-agent'
+SSH_AGENT_PATH = '/cygdrive/c/bin/ssh-pageant'
 SSH_ADD_PATH = '/usr/bin/ssh-add'
 SSH_CONFIG_FILE = os.path.expanduser('~/.ssh/config')
 
-__version__ = '0.11.0629' # x.y.MMDD
+__version__ = '0.12.0106' # x.y.MMDD
 
 class ScpError(Exception):
     def __init__(self, value):
@@ -139,20 +146,28 @@ def run_command(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     except OSError, e:
         raise ScpError('Cannot start process: %s, %s' % (command, e))
 
+def get_ssh_agent():
+    return {'SSH_AUTH_SOCK': os.environ.get('SSH_AUTH_SOCK')} \
+        if os.environ.has_key('SSH_AUTH_SOCK') else None
+
 def ssh_agent_start():
     debug('Starting ssh-agent')
     agent = {}
     output = run_command([SSH_AGENT_PATH])
-    output_pattern = 'SSH_AUTH_SOCK=(?P<SSH_AUTH_SOCK>[^;]+);.*' \
-                   + 'SSH_AGENT_PID=(?P<SSH_AGENT_PID>\d+);'
-    m = re.search(output_pattern, output, re.DOTALL)
+    output_pattern = '(SSH_AUTH_SOCK|SSH_AGENT_PID|SSH_PAGEANT_PID)=([^;]+);'
+    m = re.findall(output_pattern, output, re.DOTALL)
     if m:
-        agent = m.groupdict()
+        agent = dict((k, v.strip("'")) for (k, v) in m)
         debug('Agent sock: %s' % agent['SSH_AUTH_SOCK'])
-        debug('Agent pid: %s' % agent['SSH_AGENT_PID'])
+        debug('Agent pid: %s' % get_ssh_agent_pid(agent))
     else:
         raise ScpError('Cannot determine agent data from output: %s' % output)
     return agent
+
+def get_ssh_agent_pid(agent):
+    return agent['SSH_AGENT_PID'] if agent.has_key('SSH_AGENT_PID') else \
+        agent['SSH_PAGEANT_PID'] if agent.has_key('SSH_PAGEANT_PID') else \
+        None
 
 def get_ssh_agent_env(agent):
     env = os.environ
@@ -160,6 +175,8 @@ def get_ssh_agent_env(agent):
     return env
 
 def ssh_agent_load_keys(agent, identity_files):
+    if not identity_files:
+        return
     debug('Loading keys into ssh-agent')
     command = [SSH_ADD_PATH]
     command.extend(identity_files)
@@ -256,7 +273,11 @@ def main_transfer(host1, host2, options):
             raise ScpError('Unknown host "%s".\n' % host2['name']
                 + 'Please add it to the SSH config file: %s' % SSH_CONFIG_FILE)
 
-        agent = ssh_agent_start()
+        agent = get_ssh_agent()
+        agent_started = False
+        if not agent:
+            agent = ssh_agent_start()
+            agent_started = True
         try:
             identity_files = []
             if host1['config'].has_key('identityfile'):
@@ -266,7 +287,8 @@ def main_transfer(host1, host2, options):
             ssh_agent_load_keys(agent, identity_files)
             scp(agent, host1, host2, options)
         finally:
-            ssh_agent_stop(agent)
+            if agent_started:
+                ssh_agent_stop(agent)
     except ScpError, e:
         print 'Error: ', e.value
         sys.exit(2)

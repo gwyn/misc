@@ -1,10 +1,16 @@
+2022-01-06  Gwyn Connor <gwyn.connor@googlemail.com>
+
+        * scp_r2r.py: use running ssh agent if available
+        * scp_r2r.py: details on using the script with PuTTY agent (pageant)
+        * scp_r2r.py: allow Host entries without IdentityFile in SSH config
+
 2011-06-29  Gwyn Connor <gwyn.connor@googlemail.com>
 
-        * scp_r2r.py: setting default path2 as HOME (~) if none given
+        * scp_r2r.py: setting HOME (~) as default path2 if none given
         * scp_r2r.py: added scp -C switch for compression
         * scp_r2r.py: fixed bug when a host didn't have an identity file entry
         * ChangeLog: added this file to keep track of changes
 
-2011-04-18  Gwyn Connor <gwyn.connor@googlemail.com>
+2010-04-18  Gwyn Connor <gwyn.connor@googlemail.com>
 
         * scp_r2r.py: initial release
