@@ -1,8 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #
 # Secure copy between two remote hosts
 #
-# Copyright (c)2010-2022 by Gwyn Connor (gwyn.connor at googlemail.com)
+# Copyright (c)2010-2024 by Gwyn Connor (gwyn.connor at googlemail.com)
 # License: GNU Lesser General Public License
 #          (http://www.gnu.org/copyleft/lesser.txt)
 #
@@ -52,12 +52,12 @@ import fnmatch
 import optparse
 
 SSH_PATH = '/usr/bin/ssh'
-#SSH_AGENT_PATH = '/usr/bin/ssh-agent'
-SSH_AGENT_PATH = '/cygdrive/c/bin/ssh-pageant'
+SSH_AGENT_PATH = '/usr/bin/ssh-agent'
+#SSH_AGENT_PATH = '/cygdrive/c/bin/ssh-pageant'
 SSH_ADD_PATH = '/usr/bin/ssh-add'
 SSH_CONFIG_FILE = os.path.expanduser('~/.ssh/config')
 
-__version__ = '0.12.0106' # x.y.MMDD
+__version__ = '0.24.0610' # x.y.MMDD
 
 class ScpError(Exception):
     def __init__(self, value):
@@ -68,7 +68,7 @@ class ScpError(Exception):
 def debug(message):
     global verbose
     if verbose:
-        print message
+        print(message)
 
 class SSHConfig (object):
     """
@@ -119,7 +119,7 @@ class SSHConfig (object):
     def lookup(self, hostname):
         matches = [x for x in self._config if fnmatch.fnmatch(hostname, x['host'])]
         # sort in order of shortest match (usually '*') to longest
-        matches.sort(lambda x,y: cmp(len(x['host']), len(y['host'])))
+        matches.sort(key = lambda x: len(x['host']))
         ret = {}
         for m in matches:
             ret.update(m)
@@ -130,6 +130,12 @@ def read_ssh_config():
     sshconfig = SSHConfig()
     sshconfig.parse(open(SSH_CONFIG_FILE, 'r').readlines())
     return sshconfig
+
+def parse_hostname(hostname):
+    parsed_hostname = hostname.strip('"')
+    if ':' in parsed_hostname:
+        parsed_hostname = '[%s]' % parsed_hostname
+    return parsed_hostname
 
 def run_command(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, env=os.environ):
@@ -143,19 +149,19 @@ def run_command(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         if ret:
             raise ScpError('Process error %d' % ret)
         return output
-    except OSError, e:
+    except OSError as e:
         raise ScpError('Cannot start process: %s, %s' % (command, e))
 
 def get_ssh_agent():
     return {'SSH_AUTH_SOCK': os.environ.get('SSH_AUTH_SOCK')} \
-        if os.environ.has_key('SSH_AUTH_SOCK') else None
+        if 'SSH_AUTH_SOCK' in os.environ else None
 
 def ssh_agent_start():
     debug('Starting ssh-agent')
     agent = {}
     output = run_command([SSH_AGENT_PATH])
     output_pattern = '(SSH_AUTH_SOCK|SSH_AGENT_PID|SSH_PAGEANT_PID)=([^;]+);'
-    m = re.findall(output_pattern, output, re.DOTALL)
+    m = re.findall(output_pattern, output.decode('utf-8'), re.DOTALL)
     if m:
         agent = dict((k, v.strip("'")) for (k, v) in m)
         debug('Agent sock: %s' % agent['SSH_AUTH_SOCK'])
@@ -165,8 +171,8 @@ def ssh_agent_start():
     return agent
 
 def get_ssh_agent_pid(agent):
-    return agent['SSH_AGENT_PID'] if agent.has_key('SSH_AGENT_PID') else \
-        agent['SSH_PAGEANT_PID'] if agent.has_key('SSH_PAGEANT_PID') else \
+    return agent['SSH_AGENT_PID'] if 'SSH_AGENT_PID' in agent else \
+        agent['SSH_PAGEANT_PID'] if 'SSH_PAGEANT_PID' in agent else \
         None
 
 def get_ssh_agent_env(agent):
@@ -195,11 +201,11 @@ def scp(agent, host1, host2, options):
         connect_host = host1
         remote_host = host2
         source = host1['path']
-        target = '%s:%s' % (host2['config']['hostname'], host2['path'])
+        target = '%s:%s' % (parse_hostname(host2['config']['hostname']), host2['path'])
     else:
         connect_host = host2
         remote_host = host1
-        source = '%s:%s' % (host1['config']['hostname'], host1['path'])
+        source = '%s:%s' % (parse_hostname(host1['config']['hostname']), host1['path'])
         target = host2['path'] if host2['path'] else '~'
     command = [SSH_PATH,
         '-A',
@@ -256,8 +262,8 @@ def list_known_hosts(sshconfig):
     hosts = [entry['host'] for entry in sshconfig._config
                            if entry['host'] != '*']
     if hosts:
-        print 'List of known hosts (%s):' % SSH_CONFIG_FILE
-        print columnize(hosts, display_width=get_term_info()[1])
+        print('List of known hosts (%s):' % SSH_CONFIG_FILE)
+        print(columnize(hosts, display_width=get_term_info()[1]))
 
 def main_transfer(host1, host2, options):
     sshconfig = read_ssh_config()
@@ -280,17 +286,17 @@ def main_transfer(host1, host2, options):
             agent_started = True
         try:
             identity_files = []
-            if host1['config'].has_key('identityfile'):
-                identity_files.append(host1['config']['identityfile'])
-            if host2['config'].has_key('identityfile'):
-                identity_files.append(host2['config']['identityfile'])
+            if 'identityfile' in host1['config']:
+                identity_files.append(host1['config']['identityfile'].strip('"'))
+            if 'identityfile' in host2['config']:
+                identity_files.append(host2['config']['identityfile'].strip('"'))
             ssh_agent_load_keys(agent, identity_files)
             scp(agent, host1, host2, options)
         finally:
             if agent_started:
                 ssh_agent_stop(agent)
-    except ScpError, e:
-        print 'Error: ', e.value
+    except ScpError as e:
+        print('Error: ', e.value)
         sys.exit(2)
 
 def main():
@@ -320,7 +326,7 @@ def main():
     try:
         host1['name'], host1['path'] = args[0].split(':')
         host2['name'], host2['path'] = args[1].split(':')
-    except (IndexError, ValueError):
+    except (IndexError, ValueError) as e:
         parser.error('host arguments must be in the form "hostname:path"');
 
     main_transfer(host1, host2, options)
