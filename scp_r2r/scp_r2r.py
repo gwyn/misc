@@ -57,7 +57,7 @@ SSH_AGENT_PATH = '/usr/bin/ssh-agent'
 SSH_ADD_PATH = '/usr/bin/ssh-add'
 SSH_CONFIG_FILE = os.path.expanduser('~/.ssh/config')
 
-__version__ = '0.24.0610' # x.y.MMDD
+__version__ = '0.24.0817' # x.y.MMDD
 
 class ScpError(Exception):
     def __init__(self, value):
@@ -234,6 +234,50 @@ def scp(agent, host1, host2, options):
     env = get_ssh_agent_env(agent)
     run_command(command, stdin=sys.stdin, stdout=sys.stdout, env=env)
 
+def rsync(agent, host1, host2, options):
+    debug('Starting rsync')
+    if options.push:
+        connect_host = host1
+        remote_host = host2
+        source = host1['path']
+        target = '%s:%s' % (parse_hostname(host2['config']['hostname']), host2['path'])
+    else:
+        connect_host = host2
+        remote_host = host1
+        source = '%s:%s' % (parse_hostname(host1['config']['hostname']), host1['path'])
+        target = host2['path'] if host2['path'] else '~'
+    command = [SSH_PATH,
+        '-A',
+        '-t']
+    if options.verbose:
+        command.append('-v')
+    rsync_ssh_options = []
+    if options.verbose:
+        rsync_ssh_options.append('-v')
+    if options.limit:
+        rsync_ssh_options.extend(['-bwlimit', str(options.limit)])
+    if options.recursive:
+        rsync_ssh_options.append('-r')
+    rsync_ssh_options.extend(['-o "%s %s"' % (option, value)
+                       for option, value in remote_host['config'].items()
+                       if option not in ['identityfile', 'hostname']])
+    command.extend([
+        connect_host['name'],
+        'rsync',
+        '-e',
+        "'ssh %s'" % ' '.join(rsync_ssh_options)])
+    if options.compression:
+        command.append('-z')
+    if options.verbose:
+        command.append('-v')
+    command.extend(options.option)
+    command.extend([
+        source,
+        target
+    ])
+    env = get_ssh_agent_env(agent)
+    run_command(command, stdin=sys.stdin, stdout=sys.stdout, env=env)
+
 def get_term_info():
     """ Returns terminal size as tuple (rows, columns) """
     import fcntl, struct, termios, sys
@@ -291,7 +335,10 @@ def main_transfer(host1, host2, options):
             if 'identityfile' in host2['config']:
                 identity_files.append(host2['config']['identityfile'].strip('"'))
             ssh_agent_load_keys(agent, identity_files)
-            scp(agent, host1, host2, options)
+            if options.copytool == 'scp':
+                scp(agent, host1, host2, options)
+            elif options.copytool == 'rsync':
+                rsync(agent, host1, host2, options)
         finally:
             if agent_started:
                 ssh_agent_stop(agent)
@@ -299,11 +346,21 @@ def main_transfer(host1, host2, options):
         print('Error: ', e.value)
         sys.exit(2)
 
+class CustomOptionParser(optparse.OptionParser):
+    def format_epilog(self, formatter):
+        return self.epilog
+
 def main():
     global verbose
 
     usage = 'Usage: %prog [options] host1:path1 host2:path2'
-    parser = optparse.OptionParser(usage=usage)
+    version = '%%prog %s' % __version__
+    epilog = '''Examples:
+  scp_r2r -v server1:/path/myfile.txt server2:/path/
+  scp_r2r -v --pull -t rsync server1:/path/ server2:/path/ -o -ari -o --dry-run
+
+'''
+    parser = CustomOptionParser(usage=usage, version=version, epilog=epilog)
     parser.add_option('-v', '--verbose', action='store_true', dest='verbose',
         default=False, help='verbose mode')
     parser.add_option('--push', action='store_true', dest='push',
@@ -316,6 +373,11 @@ def main():
         help='recursively copy entire directories')
     parser.add_option('-C', action='store_false', dest='compression',
         help='enable compression')
+    parser.add_option('-t', type='choice', dest='copytool',
+        help='tool to use: scp (default), rsync', choices=['scp', 'rsync'],
+        default='scp')
+    parser.add_option('-o', type='string', action='append', dest='option',
+        help='additional options for scp/rsync (can be specified multiple times)')
     (options, args) = parser.parse_args()
     if len(args) != 2:
         parser.error('please specify exactly two hosts')

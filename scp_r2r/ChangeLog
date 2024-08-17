@@ -1,3 +1,7 @@
+2024-08-17  Gwyn Connor <gwyn.connor@googlemail.com>
+
+        * scp_r2r.py: added rsync support
+
 2024-06-10  Gwyn Connor <gwyn.connor@googlemail.com>
 
         * scp_r2r.py: ported Python 2 code to Python 3
